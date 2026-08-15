@@ -12,8 +12,7 @@ class UserRepository:
         user = User()
 
         self.db.add(user)
-        self.db.commit()
-        self.db.refresh(user)
+        self.db.flush()
 
         return user
 
