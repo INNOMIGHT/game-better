@@ -56,3 +56,10 @@ class RiotAccount(Base):
         "User",
         back_populates="riot_accounts",
     )
+
+    league_profile = relationship(
+    "LeagueProfile",
+    back_populates="riot_account",
+    uselist=False,
+    cascade="all, delete-orphan",
+    )
