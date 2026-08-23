@@ -34,3 +34,11 @@ class RiotAccountRepository:
         self.db.flush()
 
         return riot_account
+
+    def get_by_id(self,riot_account_id: int,) -> RiotAccount | None:
+
+        return (
+            self.db.query(RiotAccount)
+            .filter(RiotAccount.id == riot_account_id)
+            .first()
+        )
