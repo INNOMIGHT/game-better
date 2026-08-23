@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, BigInteger, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy.dialects.postgresql import JSONB
 from app.database.database import Base
 
 
@@ -90,7 +90,7 @@ class Match(Base):
     )
 
     raw_data: Mapped[dict | None] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
     )
 
