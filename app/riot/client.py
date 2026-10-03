@@ -1,3 +1,4 @@
+
 import os
 from urllib.parse import quote
 
@@ -9,7 +10,15 @@ load_dotenv()
 
 
 class RiotClient:
+
     ACCOUNT_REGION_URL = "https://europe.api.riotgames.com"
+
+    ROUTING_REGIONS = {
+        "AMERICAS",
+        "EUROPE",
+        "ASIA",
+        "SEA",
+    }
 
     def __init__(self):
         self.api_key = os.getenv("RIOT_API_KEY")
@@ -23,7 +32,7 @@ class RiotClient:
             headers={
                 "X-Riot-Token": self.api_key,
             },
-            timeout=10.0,
+            timeout=30.0,
         )
 
     def get_account_by_riot_id(
@@ -64,5 +73,91 @@ class RiotClient:
 
         return response.json()
 
+    def get_ranked_match_ids(
+        self,
+        puuid: str,
+        region: str,
+        start: int = 0,
+        count: int = 20,
+        queue: int = 420,
+    ) -> list[str]:
+
+        region = region.upper()
+
+        if region not in self.ROUTING_REGIONS:
+            raise ValueError(
+                f"Unsupported Riot routing region: {region}"
+            )
+
+        url = (
+            f"https://{region.lower()}.api.riotgames.com"
+            f"/lol/match/v5/matches/by-puuid/{puuid}/ids"
+        )
+
+        response = self.client.get(
+            url,
+            params={
+                "start": start,
+                "count": count,
+                "queue": queue,
+            },
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_match_by_id(
+        self,
+        match_id: str,
+        region: str,
+    ) -> dict:
+
+        region = region.upper()
+
+        if region not in self.ROUTING_REGIONS:
+            raise ValueError(
+                f"Unsupported Riot routing region: {region}"
+            )
+
+        url = (
+            f"https://{region.lower()}.api.riotgames.com"
+            f"/lol/match/v5/matches/{match_id}"
+        )
+
+        response = self.client.get(url)
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_match_timeline(
+        self,
+        match_id: str,
+        region: str,
+    ) -> dict:
+
+        region = region.upper()
+
+        if region not in self.ROUTING_REGIONS:
+            raise ValueError(
+                f"Unsupported Riot routing region: {region}"
+            )
+
+        url = (
+            f"https://{region.lower()}.api.riotgames.com"
+            f"/lol/match/v5/matches/{match_id}/timeline"
+        )
+
+        response = self.client.get(url)
+        response.raise_for_status()
+
+        return response.json()
+
     def close(self):
         self.client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()

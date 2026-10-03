@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +28,7 @@ class TimelineEvent(Base):
     )
 
     real_timestamp_ms: Mapped[int | None] = mapped_column(
-        Integer,
+        BigInteger,
         nullable=True,
     )
 
