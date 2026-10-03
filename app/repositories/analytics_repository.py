@@ -6,6 +6,9 @@ from app.models.league_profile import LeagueProfile
 from app.models.match import Match
 from app.models.match_participant import MatchParticipant
 
+from app.models.timeline_frame import TimelineFrame
+from app.models.timeline_event import TimelineEvent
+
 
 class AnalyticsRepository:
 
@@ -88,3 +91,45 @@ class AnalyticsRepository:
             }
             for match, player in results
         ]
+
+    def get_timeline_frames(self, match_ids: list[int]):
+
+        if not match_ids:
+            return []
+
+        statement = (
+            select(TimelineFrame)
+            .where(TimelineFrame.match_id.in_(match_ids))
+            .order_by(
+                TimelineFrame.match_id,
+                TimelineFrame.participant_id,
+                TimelineFrame.timestamp_ms,
+            )
+        )
+
+        return (
+            self.db.execute(statement)
+            .scalars()
+            .all()
+        )
+
+
+    def get_timeline_events(self, match_ids: list[int]):
+
+        if not match_ids:
+            return []
+
+        statement = (
+            select(TimelineEvent)
+            .where(TimelineEvent.match_id.in_(match_ids))
+            .order_by(
+                TimelineEvent.match_id,
+                TimelineEvent.timestamp_ms,
+            )
+        )
+
+        return (
+            self.db.execute(statement)
+            .scalars()
+            .all()
+        )

@@ -8,6 +8,10 @@ from app.api.users import router as users_router
 from app.api.riot import router as riot_router
 from app.api.matches import router as matches_router
 from app.api.analytics import router as analytics_router
+from app.api.timeline_analytics import (
+    router as timeline_analytics_router,
+)
+from app.api.recommendations import router as recommendations_router
 
 
 load_dotenv()
@@ -23,6 +27,9 @@ app.include_router(users_router)
 app.include_router(riot_router)
 app.include_router(matches_router)
 app.include_router(analytics_router)
+app.include_router(timeline_analytics_router)
+app.include_router(recommendations_router)
+
 
 @app.get("/")
 def root():
