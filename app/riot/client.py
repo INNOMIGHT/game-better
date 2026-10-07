@@ -1,5 +1,5 @@
-
 import os
+import time
 from urllib.parse import quote
 
 import httpx
@@ -20,6 +20,9 @@ class RiotClient:
         "SEA",
     }
 
+    MAX_RETRIES = 5
+    DEFAULT_RETRY_SECONDS = 2
+
     def __init__(self):
         self.api_key = os.getenv("RIOT_API_KEY")
 
@@ -35,14 +38,162 @@ class RiotClient:
             timeout=30.0,
         )
 
+    def _request(
+        self,
+        method: str,
+        url: str,
+        **kwargs,
+    ) -> httpx.Response:
+
+        last_exception = None
+
+        for attempt in range(
+            1,
+            self.MAX_RETRIES + 1,
+        ):
+
+            try:
+                response = self.client.request(
+                    method,
+                    url,
+                    **kwargs,
+                )
+
+            except httpx.RequestError as exc:
+                last_exception = exc
+
+                if attempt == self.MAX_RETRIES:
+                    raise
+
+                wait_seconds = min(
+                    self.DEFAULT_RETRY_SECONDS
+                    * (2 ** (attempt - 1)),
+                    30,
+                )
+
+                print(
+                    f"Riot request network error. "
+                    f"Retrying in {wait_seconds}s "
+                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                )
+
+                time.sleep(wait_seconds)
+
+                continue
+
+            # ----------------------------------
+            # RATE LIMIT
+            # ----------------------------------
+
+            if response.status_code == 429:
+
+                retry_after = response.headers.get(
+                    "Retry-After"
+                )
+
+                try:
+                    wait_seconds = int(
+                        retry_after
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    wait_seconds = (
+                        self.DEFAULT_RETRY_SECONDS
+                        * (2 ** (attempt - 1))
+                    )
+
+                wait_seconds = max(
+                    wait_seconds,
+                    1,
+                )
+
+                rate_limit_type = (
+                    response.headers.get(
+                        "X-Rate-Limit-Type"
+                    )
+                )
+
+                print(
+                    f"Riot API rate limit hit"
+                    f"{' [' + rate_limit_type + ']' if rate_limit_type else ''}. "
+                    f"Waiting {wait_seconds}s "
+                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                )
+
+                if attempt == self.MAX_RETRIES:
+                    response.raise_for_status()
+
+                time.sleep(
+                    wait_seconds
+                )
+
+                continue
+
+            # ----------------------------------
+            # TEMPORARY SERVER ERRORS
+            # ----------------------------------
+
+            if response.status_code in {
+                500,
+                502,
+                503,
+                504,
+            }:
+
+                if attempt == self.MAX_RETRIES:
+                    response.raise_for_status()
+
+                wait_seconds = min(
+                    self.DEFAULT_RETRY_SECONDS
+                    * (2 ** (attempt - 1)),
+                    30,
+                )
+
+                print(
+                    f"Riot API temporary error "
+                    f"{response.status_code}. "
+                    f"Retrying in {wait_seconds}s "
+                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                )
+
+                time.sleep(
+                    wait_seconds
+                )
+
+                continue
+
+            # ----------------------------------
+            # NORMAL RESPONSE
+            # ----------------------------------
+
+            response.raise_for_status()
+
+            return response
+
+        if last_exception:
+            raise last_exception
+
+        raise RuntimeError(
+            "Riot request failed unexpectedly."
+        )
+
     def get_account_by_riot_id(
         self,
         game_name: str,
         tag_line: str,
     ) -> dict:
 
-        encoded_game_name = quote(game_name, safe="")
-        encoded_tag_line = quote(tag_line, safe="")
+        encoded_game_name = quote(
+            game_name,
+            safe="",
+        )
+
+        encoded_tag_line = quote(
+            tag_line,
+            safe="",
+        )
 
         url = (
             f"{self.ACCOUNT_REGION_URL}"
@@ -50,8 +201,10 @@ class RiotClient:
             f"{encoded_game_name}/{encoded_tag_line}"
         )
 
-        response = self.client.get(url)
-        response.raise_for_status()
+        response = self._request(
+            "GET",
+            url,
+        )
 
         return response.json()
 
@@ -68,8 +221,10 @@ class RiotClient:
             f"/lol/summoner/v4/summoners/by-puuid/{puuid}"
         )
 
-        response = self.client.get(url)
-        response.raise_for_status()
+        response = self._request(
+            "GET",
+            url,
+        )
 
         return response.json()
 
@@ -94,7 +249,8 @@ class RiotClient:
             f"/lol/match/v5/matches/by-puuid/{puuid}/ids"
         )
 
-        response = self.client.get(
+        response = self._request(
+            "GET",
             url,
             params={
                 "start": start,
@@ -102,8 +258,6 @@ class RiotClient:
                 "queue": queue,
             },
         )
-
-        response.raise_for_status()
 
         return response.json()
 
@@ -125,8 +279,10 @@ class RiotClient:
             f"/lol/match/v5/matches/{match_id}"
         )
 
-        response = self.client.get(url)
-        response.raise_for_status()
+        response = self._request(
+            "GET",
+            url,
+        )
 
         return response.json()
 
@@ -148,8 +304,10 @@ class RiotClient:
             f"/lol/match/v5/matches/{match_id}/timeline"
         )
 
-        response = self.client.get(url)
-        response.raise_for_status()
+        response = self._request(
+            "GET",
+            url,
+        )
 
         return response.json()
 
@@ -159,5 +317,10 @@ class RiotClient:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ):
         self.close()

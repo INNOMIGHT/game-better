@@ -328,6 +328,27 @@ class ContextualFarmingService:
 
         return intervals, skipped_intervals
 
+    def extract_match_intervals(
+        self,
+        match,
+        player,
+        frames,
+        events,
+    ):
+        """
+        Public reusable interface for extracting contextual
+        intervals for a single participant in a single match.
+
+        This does not write to the database.
+        """
+
+        return self._extract_match_intervals(
+            match=match,
+            player=player,
+            frames=frames,
+            events=events,
+        )
+
     def get_player_interval_features(
         self,
         riot_account_id: int,
