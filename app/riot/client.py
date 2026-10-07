@@ -311,6 +311,81 @@ class RiotClient:
 
         return response.json()
 
+
+    async def get_ranked_entries(
+        self,
+        platform: str,
+        tier: str,
+        division: str,
+        page: int = 1,
+    ):
+        """
+        GOLD / PLATINUM / EMERALD / DIAMOND ladder entries.
+        """
+
+        path = (
+            f"/lol/league/v4/entries/"
+            f"RANKED_SOLO_5x5/"
+            f"{tier}/"
+            f"{division}"
+        )
+
+        return await self._request(
+            platform=platform,
+            path=path,
+            params={
+                "page": page,
+            },
+        )
+
+
+    async def get_master_league(
+        self,
+        platform: str,
+    ):
+        path = (
+            "/lol/league/v4/"
+            "masterleagues/by-queue/"
+            "RANKED_SOLO_5x5"
+        )
+
+        return await self._request(
+            platform=platform,
+            path=path,
+        )
+
+
+    async def get_grandmaster_league(
+        self,
+        platform: str,
+    ):
+        path = (
+            "/lol/league/v4/"
+            "grandmasterleagues/by-queue/"
+            "RANKED_SOLO_5x5"
+        )
+
+        return await self._request(
+            platform=platform,
+            path=path,
+        )
+
+
+    async def get_challenger_league(
+        self,
+        platform: str,
+    ):
+        path = (
+            "/lol/league/v4/"
+            "challengerleagues/by-queue/"
+            "RANKED_SOLO_5x5"
+        )
+
+        return await self._request(
+            platform=platform,
+            path=path,
+        )
+
     def close(self):
         self.client.close()
 
