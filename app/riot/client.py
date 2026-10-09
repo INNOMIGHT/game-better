@@ -11,7 +11,9 @@ load_dotenv()
 
 class RiotClient:
 
-    ACCOUNT_REGION_URL = "https://europe.api.riotgames.com"
+    ACCOUNT_REGION_URL = (
+        "https://europe.api.riotgames.com"
+    )
 
     ROUTING_REGIONS = {
         "AMERICAS",
@@ -24,19 +26,29 @@ class RiotClient:
     DEFAULT_RETRY_SECONDS = 2
 
     def __init__(self):
-        self.api_key = os.getenv("RIOT_API_KEY")
+
+        self.api_key = os.getenv(
+            "RIOT_API_KEY"
+        )
 
         if not self.api_key:
+
             raise ValueError(
-                "RIOT_API_KEY environment variable is not configured."
+                "RIOT_API_KEY environment variable "
+                "is not configured."
             )
 
         self.client = httpx.Client(
             headers={
-                "X-Riot-Token": self.api_key,
+                "X-Riot-Token":
+                    self.api_key,
             },
             timeout=30.0,
         )
+
+    # ==================================================
+    # INTERNAL REQUEST HANDLER
+    # ==================================================
 
     def _request(
         self,
@@ -53,55 +65,85 @@ class RiotClient:
         ):
 
             try:
-                response = self.client.request(
-                    method,
-                    url,
-                    **kwargs,
+
+                response = (
+                    self.client.request(
+                        method,
+                        url,
+                        **kwargs,
+                    )
                 )
 
             except httpx.RequestError as exc:
+
                 last_exception = exc
 
-                if attempt == self.MAX_RETRIES:
+                if (
+                    attempt
+                    == self.MAX_RETRIES
+                ):
+
                     raise
 
                 wait_seconds = min(
                     self.DEFAULT_RETRY_SECONDS
-                    * (2 ** (attempt - 1)),
+                    * (
+                        2
+                        ** (
+                            attempt - 1
+                        )
+                    ),
                     30,
                 )
 
                 print(
-                    f"Riot request network error. "
+                    "Riot request network error. "
                     f"Retrying in {wait_seconds}s "
-                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                    f"(attempt "
+                    f"{attempt}/"
+                    f"{self.MAX_RETRIES})"
                 )
 
-                time.sleep(wait_seconds)
+                time.sleep(
+                    wait_seconds
+                )
 
                 continue
 
-            # ----------------------------------
+            # ==========================================
             # RATE LIMIT
-            # ----------------------------------
+            # ==========================================
 
-            if response.status_code == 429:
+            if (
+                response.status_code
+                == 429
+            ):
 
-                retry_after = response.headers.get(
-                    "Retry-After"
+                retry_after = (
+                    response.headers.get(
+                        "Retry-After"
+                    )
                 )
 
                 try:
+
                     wait_seconds = int(
                         retry_after
                     )
+
                 except (
                     TypeError,
                     ValueError,
                 ):
+
                     wait_seconds = (
                         self.DEFAULT_RETRY_SECONDS
-                        * (2 ** (attempt - 1))
+                        * (
+                            2
+                            ** (
+                                attempt - 1
+                            )
+                        )
                     )
 
                 wait_seconds = max(
@@ -116,13 +158,19 @@ class RiotClient:
                 )
 
                 print(
-                    f"Riot API rate limit hit"
+                    "Riot API rate limit hit"
                     f"{' [' + rate_limit_type + ']' if rate_limit_type else ''}. "
                     f"Waiting {wait_seconds}s "
-                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                    f"(attempt "
+                    f"{attempt}/"
+                    f"{self.MAX_RETRIES})"
                 )
 
-                if attempt == self.MAX_RETRIES:
+                if (
+                    attempt
+                    == self.MAX_RETRIES
+                ):
+
                     response.raise_for_status()
 
                 time.sleep(
@@ -131,31 +179,45 @@ class RiotClient:
 
                 continue
 
-            # ----------------------------------
+            # ==========================================
             # TEMPORARY SERVER ERRORS
-            # ----------------------------------
+            # ==========================================
 
-            if response.status_code in {
-                500,
-                502,
-                503,
-                504,
-            }:
+            if (
+                response.status_code
+                in {
+                    500,
+                    502,
+                    503,
+                    504,
+                }
+            ):
 
-                if attempt == self.MAX_RETRIES:
+                if (
+                    attempt
+                    == self.MAX_RETRIES
+                ):
+
                     response.raise_for_status()
 
                 wait_seconds = min(
                     self.DEFAULT_RETRY_SECONDS
-                    * (2 ** (attempt - 1)),
+                    * (
+                        2
+                        ** (
+                            attempt - 1
+                        )
+                    ),
                     30,
                 )
 
                 print(
-                    f"Riot API temporary error "
+                    "Riot API temporary error "
                     f"{response.status_code}. "
                     f"Retrying in {wait_seconds}s "
-                    f"(attempt {attempt}/{self.MAX_RETRIES})"
+                    f"(attempt "
+                    f"{attempt}/"
+                    f"{self.MAX_RETRIES})"
                 )
 
                 time.sleep(
@@ -164,20 +226,25 @@ class RiotClient:
 
                 continue
 
-            # ----------------------------------
+            # ==========================================
             # NORMAL RESPONSE
-            # ----------------------------------
+            # ==========================================
 
             response.raise_for_status()
 
             return response
 
         if last_exception:
+
             raise last_exception
 
         raise RuntimeError(
             "Riot request failed unexpectedly."
         )
+
+    # ==================================================
+    # ACCOUNT-V1
+    # ==================================================
 
     def get_account_by_riot_id(
         self,
@@ -197,16 +264,24 @@ class RiotClient:
 
         url = (
             f"{self.ACCOUNT_REGION_URL}"
-            f"/riot/account/v1/accounts/by-riot-id/"
-            f"{encoded_game_name}/{encoded_tag_line}"
+            "/riot/account/v1/"
+            "accounts/by-riot-id/"
+            f"{encoded_game_name}/"
+            f"{encoded_tag_line}"
         )
 
-        response = self._request(
-            "GET",
-            url,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
         return response.json()
+
+    # ==================================================
+    # SUMMONER-V4
+    # ==================================================
 
     def get_summoner_by_puuid(
         self,
@@ -214,19 +289,53 @@ class RiotClient:
         platform: str,
     ) -> dict:
 
-        platform = platform.lower()
+        platform = (
+            platform.lower()
+        )
 
         url = (
             f"https://{platform}.api.riotgames.com"
-            f"/lol/summoner/v4/summoners/by-puuid/{puuid}"
+            "/lol/summoner/v4/"
+            f"summoners/by-puuid/{puuid}"
         )
 
-        response = self._request(
-            "GET",
-            url,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
         return response.json()
+
+    def get_summoner_by_id(
+        self,
+        summoner_id: str,
+        platform: str,
+    ) -> dict:
+
+        platform = (
+            platform.lower()
+        )
+
+        url = (
+            f"https://{platform}.api.riotgames.com"
+            "/lol/summoner/v4/"
+            f"summoners/{summoner_id}"
+        )
+
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
+        )
+
+        return response.json()
+
+    # ==================================================
+    # MATCH-V5
+    # ==================================================
 
     def get_ranked_match_ids(
         self,
@@ -237,26 +346,41 @@ class RiotClient:
         queue: int = 420,
     ) -> list[str]:
 
-        region = region.upper()
+        region = (
+            region.upper()
+        )
 
-        if region not in self.ROUTING_REGIONS:
+        if (
+            region
+            not in self.ROUTING_REGIONS
+        ):
+
             raise ValueError(
-                f"Unsupported Riot routing region: {region}"
+                "Unsupported Riot routing region: "
+                f"{region}"
             )
 
         url = (
             f"https://{region.lower()}.api.riotgames.com"
-            f"/lol/match/v5/matches/by-puuid/{puuid}/ids"
+            "/lol/match/v5/"
+            f"matches/by-puuid/{puuid}/ids"
         )
 
-        response = self._request(
-            "GET",
-            url,
-            params={
-                "start": start,
-                "count": count,
-                "queue": queue,
-            },
+        response = (
+            self._request(
+                "GET",
+                url,
+                params={
+                    "start":
+                        start,
+
+                    "count":
+                        count,
+
+                    "queue":
+                        queue,
+                },
+            )
         )
 
         return response.json()
@@ -267,21 +391,31 @@ class RiotClient:
         region: str,
     ) -> dict:
 
-        region = region.upper()
+        region = (
+            region.upper()
+        )
 
-        if region not in self.ROUTING_REGIONS:
+        if (
+            region
+            not in self.ROUTING_REGIONS
+        ):
+
             raise ValueError(
-                f"Unsupported Riot routing region: {region}"
+                "Unsupported Riot routing region: "
+                f"{region}"
             )
 
         url = (
             f"https://{region.lower()}.api.riotgames.com"
-            f"/lol/match/v5/matches/{match_id}"
+            "/lol/match/v5/"
+            f"matches/{match_id}"
         )
 
-        response = self._request(
-            "GET",
-            url,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
         return response.json()
@@ -292,104 +426,178 @@ class RiotClient:
         region: str,
     ) -> dict:
 
-        region = region.upper()
+        region = (
+            region.upper()
+        )
 
-        if region not in self.ROUTING_REGIONS:
+        if (
+            region
+            not in self.ROUTING_REGIONS
+        ):
+
             raise ValueError(
-                f"Unsupported Riot routing region: {region}"
+                "Unsupported Riot routing region: "
+                f"{region}"
             )
 
         url = (
             f"https://{region.lower()}.api.riotgames.com"
-            f"/lol/match/v5/matches/{match_id}/timeline"
+            "/lol/match/v5/"
+            f"matches/{match_id}/timeline"
         )
 
-        response = self._request(
-            "GET",
-            url,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
         return response.json()
 
+    # ==================================================
+    # LEAGUE-V4
+    #
+    # GOLD / PLATINUM / EMERALD / DIAMOND
+    # ==================================================
 
-    async def get_ranked_entries(
+    def get_ranked_entries(
         self,
         platform: str,
         tier: str,
         division: str,
         page: int = 1,
-    ):
-        """
-        GOLD / PLATINUM / EMERALD / DIAMOND ladder entries.
-        """
+    ) -> list[dict]:
 
-        path = (
-            f"/lol/league/v4/entries/"
-            f"RANKED_SOLO_5x5/"
+        platform = (
+            platform.lower()
+        )
+
+        tier = (
+            tier.upper()
+        )
+
+        division = (
+            division.upper()
+        )
+
+        url = (
+            f"https://{platform}.api.riotgames.com"
+            "/lol/league/v4/"
+            "entries/"
+            "RANKED_SOLO_5x5/"
             f"{tier}/"
             f"{division}"
         )
 
-        return await self._request(
-            platform=platform,
-            path=path,
-            params={
-                "page": page,
-            },
+        response = (
+            self._request(
+                "GET",
+                url,
+                params={
+                    "page":
+                        page,
+                },
+            )
         )
 
+        return response.json()
 
-    async def get_master_league(
+    # ==================================================
+    # LEAGUE-V4
+    #
+    # MASTER+
+    # ==================================================
+
+    def get_master_league(
         self,
         platform: str,
-    ):
-        path = (
+    ) -> dict:
+
+        platform = (
+            platform.lower()
+        )
+
+        url = (
+            f"https://{platform}.api.riotgames.com"
             "/lol/league/v4/"
             "masterleagues/by-queue/"
             "RANKED_SOLO_5x5"
         )
 
-        return await self._request(
-            platform=platform,
-            path=path,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
+        return response.json()
 
-    async def get_grandmaster_league(
+    def get_grandmaster_league(
         self,
         platform: str,
-    ):
-        path = (
+    ) -> dict:
+
+        platform = (
+            platform.lower()
+        )
+
+        url = (
+            f"https://{platform}.api.riotgames.com"
             "/lol/league/v4/"
             "grandmasterleagues/by-queue/"
             "RANKED_SOLO_5x5"
         )
 
-        return await self._request(
-            platform=platform,
-            path=path,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
+        return response.json()
 
-    async def get_challenger_league(
+    def get_challenger_league(
         self,
         platform: str,
-    ):
-        path = (
+    ) -> dict:
+
+        platform = (
+            platform.lower()
+        )
+
+        url = (
+            f"https://{platform}.api.riotgames.com"
             "/lol/league/v4/"
             "challengerleagues/by-queue/"
             "RANKED_SOLO_5x5"
         )
 
-        return await self._request(
-            platform=platform,
-            path=path,
+        response = (
+            self._request(
+                "GET",
+                url,
+            )
         )
 
-    def close(self):
+        return response.json()
+
+    # ==================================================
+    # CLEANUP
+    # ==================================================
+
+    def close(
+        self,
+    ):
+
         self.client.close()
 
-    def __enter__(self):
+    def __enter__(
+        self,
+    ):
+
         return self
 
     def __exit__(
@@ -398,4 +606,5 @@ class RiotClient:
         exc_value,
         traceback,
     ):
+
         self.close()
