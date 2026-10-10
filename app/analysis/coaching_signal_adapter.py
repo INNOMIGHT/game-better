@@ -1,14 +1,8 @@
 class CoachingSignalAdapter:
-    """
-    Converts detector/analyzer outputs into one common format.
 
-    The WeaknessAnalyzer should not need to understand
-    the raw output structure of every detector.
-    """
-
-    # --------------------------------------------------
-    # Generic builder
-    # --------------------------------------------------
+    # ==================================================
+    # SIGNAL FACTORY
+    # ==================================================
 
     @staticmethod
     def _signal(
@@ -17,36 +11,92 @@ class CoachingSignalAdapter:
         category,
         title,
         severity,
+        source,
+        positive=False,
         minute=None,
         evidence=None,
-        source=None,
-        positive=False,
     ):
+
+        severity = max(
+            1,
+            min(
+                int(severity),
+                5,
+            ),
+        )
+
         return {
-            "key": key,
-            "category": category,
-            "title": title,
+            "key":
+                key,
 
-            # Expected range 1 -> 5
-            "severity": max(
-                1,
-                min(
-                    int(round(severity)),
-                    5,
+            "category":
+                category,
+
+            "title":
+                title,
+
+            "severity":
+                severity,
+
+            "minute":
+                minute,
+
+            "evidence":
+                evidence or {},
+
+            "source":
+                source,
+
+            "positive":
+                bool(
+                    positive
                 ),
-            ),
-
-            "minute": minute,
-
-            "evidence": (
-                evidence
-                or {}
-            ),
-
-            "source": source,
-
-            "positive": positive,
         }
+
+    # ==================================================
+    # COMMON HELPERS
+    # ==================================================
+
+    @staticmethod
+    def _confidence_severity(
+        confidence,
+        default=3,
+    ):
+
+        if not confidence:
+            return default
+
+        confidence = str(
+            confidence
+        ).upper()
+
+        return {
+            "VERY_LOW": 2,
+            "LOW": 2,
+            "MEDIUM": 3,
+            "HIGH": 4,
+            "VERY_HIGH": 5,
+        }.get(
+            confidence,
+            default,
+        )
+
+    @staticmethod
+    def _first_number(
+        data,
+        *keys,
+    ):
+
+        for key in keys:
+
+            value = data.get(
+                key
+            )
+
+            if value is not None:
+                return value
+
+        return None
 
     # ==================================================
     # FARMING
@@ -56,70 +106,74 @@ class CoachingSignalAdapter:
         self,
         disruptions,
     ):
-        """
-        Expected disruption dictionaries may contain things like:
-
-        minute
-        relative_drop
-        baseline_cs_per_min
-        observed_cs_per_min
-        recovered
-        recovery_minutes
-        events
-
-        Missing keys are handled safely.
-        """
 
         signals = []
 
         for disruption in (
-            disruptions
-            or []
+            disruptions or []
         ):
 
-            relative_drop = (
-                disruption.get(
-                    "relative_drop"
-                )
-                or disruption.get(
-                    "relative_cs_drop"
-                )
-                or 0
-            )
+            if not isinstance(
+                disruption,
+                dict,
+            ):
+                continue
 
             minute = (
-                disruption.get(
-                    "minute"
-                )
-                or disruption.get(
-                    "start_minute"
-                )
-                or disruption.get(
-                    "disruption_minute"
+                self._first_number(
+                    disruption,
+                    "minute",
+                    "disruption_minute",
+                    "start_minute",
                 )
             )
 
-            recovered = (
+            confidence = (
                 disruption.get(
-                    "recovered"
+                    "confidence"
                 )
             )
 
-            # ------------------------------------------
-            # Severity from size of farming collapse
-            # ------------------------------------------
+            percentage_drop = (
+                disruption.get(
+                    "percentage_drop"
+                )
+            )
 
-            if relative_drop >= 0.70:
-                severity = 5
+            severity = (
+                self._confidence_severity(
+                    confidence,
+                    default=3,
+                )
+            )
 
-            elif relative_drop >= 0.50:
-                severity = 4
+            # Large observed drops can increase the
+            # evidence significance slightly.
+            if percentage_drop is not None:
 
-            elif relative_drop >= 0.30:
-                severity = 3
+                try:
 
-            else:
-                severity = 2
+                    percentage_drop = float(
+                        percentage_drop
+                    )
+
+                    if percentage_drop >= 70:
+                        severity = max(
+                            severity,
+                            4,
+                        )
+
+                    elif percentage_drop >= 50:
+                        severity = max(
+                            severity,
+                            3,
+                        )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    pass
 
             signals.append(
                 self._signal(
@@ -130,7 +184,7 @@ class CoachingSignalAdapter:
                         "FARMING",
 
                     title=
-                        "Farming rate collapsed",
+                        "Farming rate dropped",
 
                     severity=
                         severity,
@@ -139,65 +193,35 @@ class CoachingSignalAdapter:
                         minute,
 
                     source=
-                        "FarmingDisruptionDetector",
+                        "farming_disruption",
 
-                    evidence={
-                        "relative_drop":
-                            relative_drop,
-
-                        "baseline_cs_per_min":
-                            disruption.get(
-                                "baseline_cs_per_min"
-                            ),
-
-                        "observed_cs_per_min":
-                            disruption.get(
-                                "observed_cs_per_min"
-                            ),
-                    },
+                    evidence=
+                        disruption,
                 )
             )
 
-            # ------------------------------------------
-            # Failed recovery
-            # ------------------------------------------
+            # Actual FARM_002 payload:
+            #
+            # recovered_next_interval
+            #
+            # Preserve fallback support for
+            # the previous generic "recovered" field.
 
-            if recovered is False:
+            recovered = (
+                disruption.get(
+                    "recovered_next_interval"
+                )
+            )
 
-                signals.append(
-                    self._signal(
-                        key=
-                            "farm_recovery_failure",
+            if recovered is None:
 
-                        category=
-                            "FARMING",
-
-                        title=
-                            "Failed to recover farming after disruption",
-
-                        severity=
-                            min(
-                                severity + 1,
-                                5,
-                            ),
-
-                        minute=
-                            minute,
-
-                        source=
-                            "FarmingDisruptionDetector",
-
-                        evidence={
-                            "relative_drop":
-                                relative_drop,
-
-                            "recovered":
-                                False,
-                        },
+                recovered = (
+                    disruption.get(
+                        "recovered"
                     )
                 )
 
-            elif recovered is True:
+            if recovered is True:
 
                 signals.append(
                     self._signal(
@@ -208,26 +232,55 @@ class CoachingSignalAdapter:
                             "FARMING",
 
                         title=
-                            "Recovered farming after disruption",
+                            "Recovered farming tempo",
 
                         severity=
-                            severity,
+                            max(
+                                severity,
+                                2,
+                            ),
 
                         minute=
                             minute,
 
                         source=
-                            "FarmingDisruptionDetector",
+                            "farming_disruption",
 
-                        positive=True,
+                        positive=
+                            True,
 
-                        evidence={
-                            "relative_drop":
-                                relative_drop,
+                        evidence=
+                            disruption,
+                    )
+                )
 
-                            "recovered":
-                                True,
-                        },
+            elif recovered is False:
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "farm_recovery_failure",
+
+                        category=
+                            "FARMING",
+
+                        title=
+                            "Farming tempo did not recover immediately",
+
+                        severity=
+                            max(
+                                severity,
+                                3,
+                            ),
+
+                        minute=
+                            minute,
+
+                        source=
+                            "farming_disruption",
+
+                        evidence=
+                            disruption,
                     )
                 )
 
@@ -245,58 +298,62 @@ class CoachingSignalAdapter:
         signals = []
 
         for disruption in (
-            disruptions
-            or []
+            disruptions or []
         ):
 
+            if not isinstance(
+                disruption,
+                dict,
+            ):
+                continue
+
             minute = (
+                self._first_number(
+                    disruption,
+                    "minute",
+                    "disruption_minute",
+                    "start_minute",
+                )
+            )
+
+            severity = (
                 disruption.get(
-                    "minute"
-                )
-                or disruption.get(
-                    "start_minute"
-                )
-                or disruption.get(
-                    "disruption_minute"
+                    "severity"
                 )
             )
 
-            gold_drop = (
+            if severity is None:
+
+                severity = (
+                    self._confidence_severity(
+                        disruption.get(
+                            "confidence"
+                        ),
+                        default=3,
+                    )
+                )
+
+            metric = (
                 disruption.get(
-                    "gold_relative_drop"
+                    "metric"
                 )
                 or disruption.get(
-                    "relative_gold_drop"
+                    "metric_name"
                 )
-                or 0
             )
 
-            xp_drop = (
-                disruption.get(
-                    "xp_relative_drop"
+            if metric:
+
+                title = (
+                    f"{str(metric).upper()} "
+                    f"generation disruption"
                 )
-                or disruption.get(
-                    "relative_xp_drop"
-                )
-                or 0
-            )
-
-            largest_drop = max(
-                gold_drop,
-                xp_drop,
-            )
-
-            if largest_drop >= 0.60:
-                severity = 5
-
-            elif largest_drop >= 0.40:
-                severity = 4
-
-            elif largest_drop >= 0.25:
-                severity = 3
 
             else:
-                severity = 2
+
+                title = (
+                    "Economic disruption"
+                )
 
             signals.append(
                 self._signal(
@@ -307,7 +364,7 @@ class CoachingSignalAdapter:
                         "ECONOMY",
 
                     title=
-                        "Economic momentum collapsed",
+                        title,
 
                     severity=
                         severity,
@@ -316,23 +373,29 @@ class CoachingSignalAdapter:
                         minute,
 
                     source=
-                        "EconomicDisruptionDetector",
+                        "economic_disruption",
 
-                    evidence={
-                        "gold_relative_drop":
-                            gold_drop,
-
-                        "xp_relative_drop":
-                            xp_drop,
-                    },
+                    evidence=
+                        disruption,
                 )
             )
+
+            # Support either current or future
+            # recovery field names.
 
             recovered = (
                 disruption.get(
-                    "recovered"
+                    "recovered_next_interval"
                 )
             )
+
+            if recovered is None:
+
+                recovered = (
+                    disruption.get(
+                        "recovered"
+                    )
+                )
 
             if recovered is False:
 
@@ -345,30 +408,59 @@ class CoachingSignalAdapter:
                             "ECONOMY",
 
                         title=
-                            "Failed to recover economic momentum",
+                            "Economic generation did not recover immediately",
 
                         severity=
-                            min(
-                                severity + 1,
-                                5,
+                            max(
+                                int(
+                                    severity
+                                ),
+                                3,
                             ),
 
                         minute=
                             minute,
 
                         source=
-                            "EconomicDisruptionDetector",
+                            "economic_disruption",
 
-                        evidence={
-                            "recovered":
-                                False,
+                        evidence=
+                            disruption,
+                    )
+                )
 
-                            "gold_relative_drop":
-                                gold_drop,
+            elif recovered is True:
 
-                            "xp_relative_drop":
-                                xp_drop,
-                        },
+                signals.append(
+                    self._signal(
+                        key=
+                            "economic_recovery_success",
+
+                        category=
+                            "ECONOMY",
+
+                        title=
+                            "Recovered economic tempo",
+
+                        severity=
+                            max(
+                                int(
+                                    severity
+                                ),
+                                2,
+                            ),
+
+                        minute=
+                            minute,
+
+                        source=
+                            "economic_disruption",
+
+                        positive=
+                            True,
+
+                        evidence=
+                            disruption,
                     )
                 )
 
@@ -380,83 +472,240 @@ class CoachingSignalAdapter:
 
     def from_death_patterns(
         self,
-        death_analysis,
+        death_patterns,
     ):
-        """
-        Converts higher-level death-pattern output.
-
-        This is intentionally defensive because your
-        detector may expose phase counts/rates slightly
-        differently.
-        """
 
         signals = []
 
-        if not death_analysis:
+        if not death_patterns:
             return signals
 
-        phases = (
-            death_analysis.get(
-                "phases"
-            )
-            or death_analysis.get(
-                "phase_stats"
-            )
-            or {}
-        )
+        # ==========================================
+        # NORMALIZE DEATH_001 PAYLOAD
+        #
+        # Actual structure:
+        #
+        # {
+        #     "detector_id": "DEATH_001",
+        #     "matches_analyzed": 1,
+        #     "match_results": [
+        #         {
+        #             "phases": ...
+        #         }
+        #     ],
+        #     ...
+        # }
+        #
+        # Also preserve support for older/direct
+        # phase structures.
+        # ==========================================
 
-        for phase_name, phase in (
-            phases.items()
+        phase_sets = []
+
+        if isinstance(
+            death_patterns,
+            dict,
         ):
 
-            deaths = (
-                phase.get(
-                    "deaths"
+            match_results = (
+                death_patterns.get(
+                    "match_results"
                 )
-                or phase.get(
-                    "death_count"
-                )
-                or 0
             )
 
-            if deaths < 2:
-                continue
+            if isinstance(
+                match_results,
+                list,
+            ):
 
-            if deaths >= 4:
-                severity = 5
+                for match_result in (
+                    match_results
+                ):
 
-            elif deaths == 3:
-                severity = 4
+                    if not isinstance(
+                        match_result,
+                        dict,
+                    ):
+                        continue
+
+                    phases = (
+                        match_result.get(
+                            "phases"
+                        )
+                    )
+
+                    if isinstance(
+                        phases,
+                        dict,
+                    ):
+
+                        phase_sets.append(
+                            {
+                                "phases":
+                                    phases,
+
+                                "match_result":
+                                    match_result,
+                            }
+                        )
 
             else:
-                severity = 3
 
-            signals.append(
-                self._signal(
-                    key=
-                        f"repeated_deaths_{phase_name}",
-
-                    category=
-                        "DEATHS",
-
-                    title=
-                        f"Repeated deaths during {phase_name} game",
-
-                    severity=
-                        severity,
-
-                    source=
-                        "DeathPatternDetector",
-
-                    evidence={
-                        "phase":
-                            phase_name,
-
-                        "deaths":
-                            deaths,
-                    },
+                phases = (
+                    death_patterns.get(
+                        "phases"
+                    )
                 )
+
+                if isinstance(
+                    phases,
+                    dict,
+                ):
+
+                    phase_sets.append(
+                        {
+                            "phases":
+                                phases,
+
+                            "match_result":
+                                death_patterns,
+                        }
+                    )
+
+                else:
+
+                    phase_sets.append(
+                        {
+                            "phases":
+                                death_patterns,
+
+                            "match_result":
+                                death_patterns,
+                        }
+                    )
+
+        # ==========================================
+        # BUILD PHASE SIGNALS
+        # ==========================================
+
+        for phase_set in phase_sets:
+
+            phases = (
+                phase_set[
+                    "phases"
+                ]
             )
+
+            match_result = (
+                phase_set[
+                    "match_result"
+                ]
+            )
+
+            for phase in (
+                "early",
+                "mid",
+                "late",
+            ):
+
+                data = (
+                    phases.get(
+                        phase
+                    )
+                )
+
+                if not isinstance(
+                    data,
+                    dict,
+                ):
+                    continue
+
+                deaths = (
+                    data.get(
+                        "deaths"
+                    )
+                )
+
+                if deaths is None:
+
+                    deaths = (
+                        data.get(
+                            "death_count"
+                        )
+                    )
+
+                if deaths is None:
+                    deaths = 0
+
+                repeated = (
+                    data.get(
+                        "repeated_deaths"
+                    )
+                )
+
+                if repeated is None:
+
+                    repeated = (
+                        deaths >= 2
+                    )
+
+                if not repeated:
+                    continue
+
+                if deaths >= 4:
+
+                    severity = 5
+
+                elif deaths >= 3:
+
+                    severity = 4
+
+                else:
+
+                    severity = 3
+
+                evidence = {
+                    "phase":
+                        phase,
+
+                    "phase_data":
+                        data,
+
+                    "total_match_deaths":
+                        match_result.get(
+                            "total_deaths"
+                        ),
+
+                    "detector_id":
+                        death_patterns.get(
+                            "detector_id"
+                        ),
+                }
+
+                signals.append(
+                    self._signal(
+                        key=
+                            f"repeated_deaths_{phase}",
+
+                        category=
+                            "SURVIVAL",
+
+                        title=
+                            (
+                                f"Repeated "
+                                f"{phase}-game deaths"
+                            ),
+
+                        severity=
+                            severity,
+
+                        source=
+                            "death_patterns",
+
+                        evidence=
+                            evidence,
+                    )
+                )
 
         return signals
 
@@ -466,124 +715,287 @@ class CoachingSignalAdapter:
 
     def from_critical_moments(
         self,
-        moments,
+        critical_moments,
     ):
 
         signals = []
 
-        reason_map = {
-            "team_gold_disadvantage": (
-                "fight_while_gold_behind",
-                "FIGHT_SELECTION",
-                "Fought while team was behind in gold",
-            ),
-
-            "team_level_disadvantage": (
-                "fight_while_level_behind",
-                "FIGHT_SELECTION",
-                "Fought while team was behind in levels",
-            ),
-
-            "local_number_disadvantage": (
-                "outnumbered_fight",
-                "FIGHT_SELECTION",
-                "Took a locally outnumbered fight",
-            ),
-
-            "enemy_objective_after_death": (
-                "death_before_objective",
-                "OBJECTIVES",
-                "Death preceded an enemy major objective",
-            ),
-
-            "gap_widened_after_death": (
-                "high_impact_death",
-                "DEATHS",
-                "Death was followed by a larger economic deficit",
-            ),
-        }
-
         for moment in (
-            moments
-            or []
+            critical_moments or []
         ):
 
-            severity = (
+            if not isinstance(
+                moment,
+                dict,
+            ):
+                continue
+
+            minute = (
                 moment.get(
-                    "severity",
-                    1,
+                    "minute"
                 )
             )
 
-            for reason in (
+            if (
+                minute is None
+                and
                 moment.get(
-                    "reasons",
-                    []
+                    "timestamp_ms"
                 )
+                is not None
             ):
 
-                mapping = (
-                    reason_map.get(
-                        reason
-                    )
+                minute = round(
+                    (
+                        moment[
+                            "timestamp_ms"
+                        ]
+                        / 60000
+                    ),
+                    2,
                 )
 
-                if mapping is None:
-                    continue
+            severity = (
+                moment.get(
+                    "severity"
+                )
+                or 3
+            )
 
-                (
-                    key,
-                    category,
-                    title,
-                ) = mapping
+            # ==========================================
+            # IMPORTANT:
+            #
+            # CriticalMomentAnalyzer stores findings in:
+            #
+            # moment["reasons"]
+            #
+            # NOT as top-level booleans.
+            # ==========================================
+
+            reasons = set(
+                moment.get(
+                    "reasons",
+                    [],
+                )
+                or []
+            )
+
+            # ------------------------------------------
+            # GOLD DISADVANTAGE
+            # ------------------------------------------
+
+            if (
+                "team_gold_disadvantage"
+                in reasons
+            ):
 
                 signals.append(
                     self._signal(
                         key=
-                            key,
+                            "fight_while_gold_behind",
 
                         category=
-                            category,
+                            "FIGHT_SELECTION",
 
                         title=
-                            title,
+                            "Died while team was behind in gold",
 
                         severity=
                             severity,
 
                         minute=
-                            moment.get(
-                                "minute"
-                            ),
+                            minute,
 
                         source=
-                            "CriticalMomentAnalyzer",
+                            "critical_moment",
 
-                        evidence={
-                            "team_gold_difference":
-                                moment.get(
-                                    "before",
-                                    {},
-                                ).get(
-                                    "team_gold_difference"
-                                ),
+                        evidence=
+                            moment,
+                    )
+                )
 
-                            "team_level_difference":
-                                moment.get(
-                                    "before",
-                                    {},
-                                ).get(
-                                    "team_level_difference"
-                                ),
+            # ------------------------------------------
+            # LEVEL DISADVANTAGE
+            # ------------------------------------------
 
-                            "gold_difference_change":
-                                moment.get(
-                                    "change",
-                                    {},
-                                ).get(
-                                    "gold_difference_change"
+            if (
+                "team_level_disadvantage"
+                in reasons
+            ):
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "fight_while_level_behind",
+
+                        category=
+                            "FIGHT_SELECTION",
+
+                        title=
+                            "Died while team was behind in levels",
+
+                        severity=
+                            severity,
+
+                        minute=
+                            minute,
+
+                        source=
+                            "critical_moment",
+
+                        evidence=
+                            moment,
+                    )
+                )
+
+            # ------------------------------------------
+            # LOCAL NUMBER DISADVANTAGE
+            # ------------------------------------------
+
+            if (
+                "local_number_disadvantage"
+                in reasons
+            ):
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "outnumbered_fight",
+
+                        category=
+                            "FIGHT_SELECTION",
+
+                        title=
+                            "Died while locally outnumbered",
+
+                        severity=
+                            severity,
+
+                        minute=
+                            minute,
+
+                        source=
+                            "critical_moment",
+
+                        evidence=
+                            moment,
+                    )
+                )
+
+            # ------------------------------------------
+            # OBJECTIVE WINDOW
+            # ------------------------------------------
+
+            if (
+                "enemy_objective_after_death"
+                in reasons
+            ):
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "death_before_objective",
+
+                        category=
+                            "OBJECTIVES",
+
+                        title=
+                            "Death shortly before enemy objective",
+
+                        severity=
+                            max(
+                                int(
+                                    severity
                                 ),
-                        },
+                                4,
+                            ),
+
+                        minute=
+                            minute,
+
+                        source=
+                            "critical_moment",
+
+                        evidence=
+                            moment,
+                    )
+                )
+
+            # ------------------------------------------
+            # GOLD DEFICIT WIDENED AFTER DEATH
+            # ------------------------------------------
+
+            if (
+                "gap_widened_after_death"
+                in reasons
+            ):
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "high_impact_death",
+
+                        category=
+                            "SURVIVAL",
+
+                        title=
+                            "Team gold position worsened after this death",
+
+                        severity=
+                            max(
+                                int(
+                                    severity
+                                ),
+                                4,
+                            ),
+
+                        minute=
+                            minute,
+
+                        source=
+                            "critical_moment",
+
+                        evidence=
+                            moment,
+                    )
+                )
+
+            # ------------------------------------------
+            # LEVEL DEFICIT WIDENED
+            # ------------------------------------------
+
+            if (
+                "level_gap_widened"
+                in reasons
+            ):
+
+                signals.append(
+                    self._signal(
+                        key=
+                            "level_gap_widening",
+
+                        category=
+                            "SURVIVAL",
+
+                        title=
+                            "Team level position worsened after this death",
+
+                        severity=
+                            max(
+                                int(
+                                    severity
+                                ),
+                                3,
+                            ),
+
+                        minute=
+                            minute,
+
+                        source=
+                            "critical_moment",
+
+                        evidence=
+                            moment,
                     )
                 )
 
@@ -595,26 +1007,61 @@ class CoachingSignalAdapter:
 
     def from_positive_moments(
         self,
-        moments,
+        positive_moments,
     ):
 
         signals = []
 
         for moment in (
-            moments
-            or []
+            positive_moments or []
         ):
+
+            if not isinstance(
+                moment,
+                dict,
+            ):
+                continue
 
             reasons = set(
                 moment.get(
                     "reasons",
-                    []
+                    [],
+                )
+                or []
+            )
+
+            impact_score = (
+                moment.get(
+                    "impact_score"
+                )
+                or 3
+            )
+
+            minute = (
+                moment.get(
+                    "minute"
                 )
             )
+
+            objective_conversion = (
+                moment.get(
+                    "objective_conversion"
+                )
+            )
+
+            # Only emit a normalized positive coaching
+            # signal when the combat event converted into
+            # meaningful objective value.
+            #
+            # Ordinary kills/assists stay available in the
+            # positive-moment evidence layer but don't
+            # clutter the coaching signal layer.
 
             if (
                 "objective_conversion"
                 in reasons
+                or
+                objective_conversion
             ):
 
                 signals.append(
@@ -626,31 +1073,442 @@ class CoachingSignalAdapter:
                             "OBJECTIVES",
 
                         title=
-                            "Converted combat success into an objective",
+                            "Successfully converted combat into an objective",
 
                         severity=
-                            moment.get(
-                                "impact_score",
-                                3,
-                            ),
+                            impact_score,
 
                         minute=
-                            moment.get(
-                                "minute"
-                            ),
+                            minute,
 
                         source=
-                            "PositiveMomentAnalyzer",
+                            "positive_moment",
 
-                        positive=True,
+                        positive=
+                            True,
 
-                        evidence={
-                            "objective":
-                                moment.get(
-                                    "objective_conversion"
-                                )
-                        },
+                        evidence=
+                            moment,
                     )
                 )
+
+        return signals
+
+    # ==================================================
+    # RANK-RELATIVE PERFORMANCE
+    # ==================================================
+
+    RANK_METRICS = {
+
+        "cs_at_10": {
+            "key":
+                "early_farming",
+
+            "category":
+                "FARMING",
+
+            "positive_title":
+                "Strong early farming",
+
+            "negative_title":
+                "Early farming below progression baseline",
+        },
+
+        "cs_per_min": {
+            "key":
+                "sustained_farming",
+
+            "category":
+                "FARMING",
+
+            "positive_title":
+                "Strong sustained farming",
+
+            "negative_title":
+                "Sustained farming below progression baseline",
+        },
+
+        "gold_at_10": {
+            "key":
+                "early_economy",
+
+            "category":
+                "ECONOMY",
+
+            "positive_title":
+                "Strong early economy",
+
+            "negative_title":
+                "Early economy below progression baseline",
+        },
+
+        "gold_per_min": {
+            "key":
+                "sustained_economy",
+
+            "category":
+                "ECONOMY",
+
+            "positive_title":
+                "Strong sustained economy",
+
+            "negative_title":
+                "Sustained economy below progression baseline",
+        },
+
+        "xp_at_10": {
+            "key":
+                "early_experience",
+
+            "category":
+                "ECONOMY",
+
+            "positive_title":
+                "Strong early experience progression",
+
+            "negative_title":
+                "Early experience below progression baseline",
+        },
+
+        "deaths": {
+            "key":
+                "survival_efficiency",
+
+            "category":
+                "SURVIVAL",
+
+            "positive_title":
+                "Strong survival compared with peers",
+
+            "negative_title":
+                "Survival below role baseline",
+        },
+
+        "kda": {
+            "key":
+                "combat_efficiency",
+
+            "category":
+                "COMBAT",
+
+            "positive_title":
+                "Strong combat efficiency",
+
+            "negative_title":
+                "Combat efficiency below role baseline",
+        },
+    }
+
+    @staticmethod
+    def _rank_signal_severity(
+        percentile,
+    ):
+        """
+        Convert rank-relative percentile into an
+        internal evidence severity.
+
+        This is NOT intended as a universal
+        performance score.
+        """
+
+        if percentile is None:
+            return 2
+
+        percentile = float(
+            percentile
+        )
+
+        if percentile < 10:
+            return 5
+
+        if percentile < 25:
+            return 4
+
+        if percentile < 40:
+            return 3
+
+        if percentile >= 90:
+            return 5
+
+        if percentile >= 75:
+            return 4
+
+        return 3
+
+    def from_rank_performance(
+        self,
+        rank_performance,
+    ):
+        """
+        Only metrics with supported rank trajectories
+        become rank-development coaching signals.
+
+        NOT_SUPPORTED metrics remain descriptive.
+        """
+
+        signals = []
+
+        if not rank_performance:
+            return signals
+
+        # ==========================================
+        # POSITIVE RANK-ALIGNED STRENGTHS
+        # ==========================================
+
+        for item in (
+            rank_performance.get(
+                "rank_aligned_strengths",
+                [],
+            )
+            or []
+        ):
+
+            metric = (
+                item.get(
+                    "metric"
+                )
+            )
+
+            config = (
+                self.RANK_METRICS.get(
+                    metric
+                )
+            )
+
+            if config is None:
+                continue
+
+            peer_percentile = (
+                item.get(
+                    "peer_percentile"
+                )
+            )
+
+            signals.append(
+                self._signal(
+                    key=
+                        config[
+                            "key"
+                        ],
+
+                    category=
+                        config[
+                            "category"
+                        ],
+
+                    title=
+                        config[
+                            "positive_title"
+                        ],
+
+                    severity=
+                        self._rank_signal_severity(
+                            peer_percentile
+                        ),
+
+                    source=
+                        "rank_performance",
+
+                    positive=
+                        True,
+
+                    evidence={
+                        "metric":
+                            metric,
+
+                        "value":
+                            item.get(
+                                "value"
+                            ),
+
+                        "rank":
+                            item.get(
+                                "current_rank"
+                            ),
+
+                        "role":
+                            item.get(
+                                "role"
+                            ),
+
+                        "peer_percentile":
+                            peer_percentile,
+
+                        "peer_median":
+                            item.get(
+                                "peer_median"
+                            ),
+
+                        "next_rank":
+                            item.get(
+                                "next_rank"
+                            ),
+
+                        "next_rank_percentile":
+                            item.get(
+                                "next_rank_percentile"
+                            ),
+
+                        "rank_relevance":
+                            item.get(
+                                "rank_relevance"
+                            ),
+
+                        "trajectory_alignment":
+                            item.get(
+                                "trajectory_alignment"
+                            ),
+
+                        "trajectory_reliability":
+                            item.get(
+                                "trajectory_reliability"
+                            ),
+                    },
+                )
+            )
+
+        # ==========================================
+        # SUPPORTED DEVELOPMENT GAPS
+        # ==========================================
+
+        for item in (
+            rank_performance.get(
+                "development_opportunities",
+                [],
+            )
+            or []
+        ):
+
+            metric = (
+                item.get(
+                    "metric"
+                )
+            )
+
+            config = (
+                self.RANK_METRICS.get(
+                    metric
+                )
+            )
+
+            if config is None:
+                continue
+
+            rank_relevance = (
+                item.get(
+                    "rank_relevance"
+                )
+            )
+
+            # Only supported trajectory relationships
+            # can become rank-development weaknesses.
+            if (
+                rank_relevance
+                not in {
+                    "STRONG",
+                    "MODERATE",
+                }
+            ):
+                continue
+
+            next_percentile = (
+                item.get(
+                    "next_rank_percentile"
+                )
+            )
+
+            peer_percentile = (
+                item.get(
+                    "peer_percentile"
+                )
+            )
+
+            severity_basis = (
+                next_percentile
+                if (
+                    next_percentile
+                    is not None
+                )
+                else peer_percentile
+            )
+
+            signals.append(
+                self._signal(
+                    key=
+                        config[
+                            "key"
+                        ],
+
+                    category=
+                        config[
+                            "category"
+                        ],
+
+                    title=
+                        config[
+                            "negative_title"
+                        ],
+
+                    severity=
+                        self._rank_signal_severity(
+                            severity_basis
+                        ),
+
+                    source=
+                        "rank_performance",
+
+                    positive=
+                        False,
+
+                    evidence={
+                        "metric":
+                            metric,
+
+                        "value":
+                            item.get(
+                                "value"
+                            ),
+
+                        "rank":
+                            item.get(
+                                "current_rank"
+                            ),
+
+                        "role":
+                            item.get(
+                                "role"
+                            ),
+
+                        "peer_percentile":
+                            peer_percentile,
+
+                        "peer_median":
+                            item.get(
+                                "peer_median"
+                            ),
+
+                        "next_rank":
+                            item.get(
+                                "next_rank"
+                            ),
+
+                        "next_rank_percentile":
+                            next_percentile,
+
+                        "rank_relevance":
+                            rank_relevance,
+
+                        "trajectory_alignment":
+                            item.get(
+                                "trajectory_alignment"
+                            ),
+
+                        "trajectory_reliability":
+                            item.get(
+                                "trajectory_reliability"
+                            ),
+                    },
+                )
+            )
 
         return signals

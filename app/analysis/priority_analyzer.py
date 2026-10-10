@@ -1,198 +1,450 @@
 class PriorityAnalyzer:
 
+    MAX_PRIORITIES = 5
+
     TASKS = {
+        # ==========================================
+        # FIGHT SELECTION
+        # ==========================================
+
         "fight_while_gold_behind": {
             "title":
-                "Stop forcing fights when your team is already behind",
+                "Improve fight selection when behind",
 
-            "next_game_task":
+            "category":
+                "FIGHT_SELECTION",
+
+            "action":
                 (
-                    "Before committing to a fight, "
-                    "check the team gold state indirectly "
-                    "through items, completed components, "
-                    "levels and recent objective losses. "
-                    "If your team is clearly weaker, "
-                    "look for farming, vision, picks or "
-                    "numbers advantages instead of a "
-                    "straight fight."
+                    "Avoid forcing fights when your team "
+                    "is already behind in gold. Look for "
+                    "safer farm, vision, picks, or a better "
+                    "numbers advantage first."
                 ),
         },
 
         "fight_while_level_behind": {
             "title":
-                "Check level advantages before fighting",
+                "Respect level disadvantages",
 
-            "next_game_task":
+            "category":
+                "FIGHT_SELECTION",
+
+            "action":
                 (
-                    "Before an important fight, compare "
-                    "your level and your nearby teammates' "
-                    "levels against the opponents. Avoid "
-                    "forcing even-number fights when your "
-                    "team is multiple combined levels behind."
+                    "Before committing to a fight, check "
+                    "important level and ultimate advantages. "
+                    "Avoid equal-number fights when your team "
+                    "is materially behind in levels."
                 ),
         },
 
-        "outnumbered_fights": {
+        # STANDARDIZED SINGULAR KEY
+        "outnumbered_fight": {
             "title":
-                "Reduce outnumbered fight attempts",
+                "Reduce outnumbered fights",
 
-            "next_game_task":
+            "category":
+                "FIGHT_SELECTION",
+
+            "action":
                 (
-                    "Before committing, count visible allies "
-                    "and enemies. If you do not know where "
-                    "multiple enemies are, assume the fight "
-                    "may become unfavorable and preserve "
-                    "your escape route."
+                    "Avoid committing when nearby enemy "
+                    "numbers exceed your team's available "
+                    "numbers. Wait for teammates or disengage."
                 ),
         },
+
+        # ==========================================
+        # OBJECTIVES / SURVIVAL
+        # ==========================================
 
         "death_before_objective": {
             "title":
-                "Prioritize staying alive before objectives",
+                "Stay alive before major objectives",
 
-            "next_game_task":
+            "category":
+                "OBJECTIVES",
+
+            "action":
                 (
-                    "During the 60–90 seconds before Dragon "
-                    "or Baron, reduce unnecessary side fights "
-                    "and risky wave collection. Arrive alive, "
-                    "with resources and position available "
-                    "for the objective setup."
+                    "Prioritize survival before Dragon, "
+                    "Baron, or Herald windows. Avoid low-value "
+                    "fights when your death could leave your "
+                    "team unable to contest."
                 ),
         },
 
-        "high_impact_deaths": {
+        # STANDARDIZED SINGULAR KEY
+        "high_impact_death": {
             "title":
-                "Reduce deaths that create large tempo losses",
+                "Reduce high-impact deaths",
 
-            "next_game_task":
+            "category":
+                "SURVIVAL",
+
+            "action":
                 (
-                    "When dying would expose towers, objectives "
-                    "or large waves, value survival more highly. "
-                    "Ask whether the potential reward is worth "
-                    "losing map pressure for the next 30–60 seconds."
+                    "Identify deaths that are followed by "
+                    "large economic swings and play those "
+                    "situations more conservatively."
                 ),
         },
 
         "level_gap_widening": {
             "title":
-                "Avoid repeated fights while falling behind",
+                "Avoid deaths while already behind",
 
-            "next_game_task":
+            "category":
+                "SURVIVAL",
+
+            "action":
                 (
-                    "After a losing fight, avoid immediately "
-                    "taking another low-percentage fight. "
-                    "Recover experience and resources first "
-                    "unless the next fight is forced by a "
-                    "major objective."
+                    "When your team is behind in levels, "
+                    "avoid deaths that allow the opponent "
+                    "to extend the level advantage further."
                 ),
         },
 
+        # ==========================================
+        # FARMING
+        # ==========================================
+
         "farm_disruption": {
             "title":
-                "Make your farming more resilient",
+                "Reduce farming disruptions",
 
-            "next_game_task":
+            "category":
+                "FARMING",
+
+            "action":
                 (
-                    "When your normal farming pattern is interrupted, "
-                    "identify the safest nearby wave or jungle resource "
-                    "instead of allowing several low-resource minutes "
-                    "to accumulate."
+                    "Look for the events that repeatedly "
+                    "interrupt your farming tempo and avoid "
+                    "unnecessary downtime between waves "
+                    "and objectives."
                 ),
         },
 
         "farm_recovery_failure": {
             "title":
-                "Recover your economy faster after disruptions",
+                "Improve recovery after losing farm tempo",
 
-            "next_game_task":
+            "category":
+                "FARMING",
+
+            "action":
                 (
-                    "After a death, roam, recall or objective fight, "
-                    "actively plan your next resource cycle. Avoid "
-                    "drifting between plays without collecting waves "
-                    "or camps unless your team immediately needs you."
+                    "After a death, roam, or disrupted lane, "
+                    "prioritize a safe route back into reliable "
+                    "farm instead of immediately forcing another "
+                    "low-probability play."
                 ),
         },
 
+        # ==========================================
+        # ECONOMY
+        # ==========================================
+
         "economic_disruption": {
             "title":
-                "Reduce major economic slowdowns",
+                "Protect your economy",
 
-            "next_game_task":
+            "category":
+                "ECONOMY",
+
+            "action":
                 (
-                    "Watch for periods where both gold and experience "
-                    "generation fall sharply. After a play ends, choose "
-                    "your next source of gold and XP quickly instead of "
-                    "remaining in low-value map states."
+                    "Reduce periods where your gold or "
+                    "experience generation falls sharply "
+                    "relative to your earlier pace."
                 ),
         },
 
         "economic_recovery_failure": {
             "title":
-                "Stabilize after losing economic momentum",
+                "Recover economy more efficiently",
 
-            "next_game_task":
+            "category":
+                "ECONOMY",
+
+            "action":
                 (
-                    "When you fall behind economically, prioritize safe "
-                    "resources and avoid repeated low-probability fights. "
-                    "The goal is to restore gold and experience income "
-                    "before taking another expensive risk."
+                    "After falling behind economically, "
+                    "focus on high-certainty resources and "
+                    "safe experience before taking another "
+                    "high-risk fight."
                 ),
         },
 
+        # ==========================================
+        # RANK-RELATIVE PERFORMANCE
+        # ==========================================
 
+        "early_farming": {
+            "title":
+                "Improve early farming consistency",
+
+            "category":
+                "FARMING",
+
+            "action":
+                (
+                    "Your early farming is below the supported "
+                    "baseline for progression in your role. "
+                    "Prioritize wave collection and reduce "
+                    "unnecessary early CS losses."
+                ),
+        },
+
+        "sustained_farming": {
+            "title":
+                "Maintain farm through mid game",
+
+            "category":
+                "FARMING",
+
+            "action":
+                (
+                    "Your early game may be acceptable, but "
+                    "your sustained farm is below the supported "
+                    "next-rank baseline. Improve side-wave and "
+                    "safe resource collection between fights."
+                ),
+        },
+
+        "early_economy": {
+            "title":
+                "Improve early gold generation",
+
+            "category":
+                "ECONOMY",
+
+            "action":
+                (
+                    "Your early gold generation is below a "
+                    "supported role-and-rank baseline. Focus on "
+                    "reliable lane resources and higher-value "
+                    "early decisions."
+                ),
+        },
+
+        "sustained_economy": {
+            "title":
+                "Improve sustained gold generation",
+
+            "category":
+                "ECONOMY",
+
+            "action":
+                (
+                    "Your gold generation falls below supported "
+                    "higher-rank role baselines over the full "
+                    "game. Reduce resource downtime between "
+                    "major events."
+                ),
+        },
+
+        "early_experience": {
+            "title":
+                "Improve early experience efficiency",
+
+            "category":
+                "ECONOMY",
+
+            "action":
+                (
+                    "Avoid unnecessary early experience losses. "
+                    "Protect wave experience and reduce time "
+                    "spent away from productive map activity."
+                ),
+        },
+
+        "survival_efficiency": {
+            "title":
+                "Improve survival efficiency",
+
+            "category":
+                "SURVIVAL",
+
+            "action":
+                (
+                    "Your death profile is below the relevant "
+                    "role baseline. Focus on avoiding low-value "
+                    "deaths rather than simply playing more "
+                    "passively."
+                ),
+        },
+
+        "combat_efficiency": {
+            "title":
+                "Improve combat efficiency",
+
+            "category":
+                "COMBAT",
+
+            "action":
+                (
+                    "Improve the value you generate from fights "
+                    "relative to the risks you take."
+                ),
+        },
     }
 
-    def build_priorities(
+    # ==================================================
+    # TASK RESOLUTION
+    # ==================================================
+
+    def _task_for_weakness(
         self,
-        weakness_analysis,
-        max_priorities=5,
+        weakness,
     ):
 
-        weaknesses = (
-            weakness_analysis.get(
-                "weaknesses",
-                [],
+        key = (
+            weakness.get(
+                "key"
             )
         )
 
-        priorities = []
+        # Dynamic death-phase signals.
+        if (
+            key
+            and
+            key.startswith(
+                "repeated_deaths_"
+            )
+        ):
 
-        for weakness in weaknesses:
-            task = self.TASKS.get(
-                weakness["key"]
+            phase = (
+                key.replace(
+                    "repeated_deaths_",
+                    ""
+                )
             )
 
-            if (
-                task is None
-                and weakness[
-                    "key"
-                ].startswith(
-                    "repeated_deaths_"
+            return {
+                "title":
+                    (
+                        f"Reduce repeated "
+                        f"{phase}-game deaths"
+                    ),
+
+                "category":
+                    "SURVIVAL",
+
+                "action":
+                    (
+                        f"Review recurring deaths during the "
+                        f"{phase} phase and identify whether "
+                        "they come from positioning, numbers "
+                        "disadvantages, or unnecessary fights."
+                    ),
+            }
+
+        return (
+            self.TASKS.get(
+                key
+            )
+        )
+
+    # ==================================================
+    # PRIORITY SCORE
+    # ==================================================
+
+    @staticmethod
+    def _priority_score(
+        weakness,
+    ):
+
+        weakness_score = float(
+            weakness.get(
+                "weakness_score",
+                0,
+            )
+            or 0
+        )
+
+        severity_total = float(
+            weakness.get(
+                "severity_total",
+                0,
+            )
+            or 0
+        )
+
+        occurrences = float(
+            weakness.get(
+                "occurrences",
+                0,
+            )
+            or 0
+        )
+
+        high_impact = float(
+            weakness.get(
+                "high_impact_occurrences",
+                0,
+            )
+            or 0
+        )
+
+        # Weakness score remains the dominant term.
+        #
+        # Extra recurrence/impact helps break ties.
+        score = (
+            weakness_score
+            +
+            min(
+                severity_total / 50.0,
+                0.15,
+            )
+            +
+            min(
+                occurrences / 50.0,
+                0.10,
+            )
+            +
+            min(
+                high_impact / 20.0,
+                0.10,
+            )
+        )
+
+        return round(
+            score,
+            4,
+        )
+
+    # ==================================================
+    # ANALYZE
+    # ==================================================
+
+    def analyze(
+        self,
+        weaknesses,
+        max_priorities=None,
+    ):
+
+        if max_priorities is None:
+
+            max_priorities = (
+                self.MAX_PRIORITIES
+            )
+
+        candidates = []
+
+        for weakness in (
+            weaknesses or []
+        ):
+
+            task = (
+                self._task_for_weakness(
+                    weakness
                 )
-            ):
+            )
 
-                phase = (
-                    weakness[
-                        "key"
-                    ]
-                    .replace(
-                        "repeated_deaths_",
-                        "",
-                    )
-                )
-
-                task = {
-                    "title":
-                        f"Reduce repeated deaths during the {phase} game",
-
-                    "next_game_task":
-                        (
-                            f"During the {phase} game, treat each death "
-                            "as a reset point. Before re-entering combat, "
-                            "check whether your item, level, numbers and "
-                            "objective situation have actually improved."
-                        ),
-                }
+            if task is None:
+                continue
 
             confidence = (
                 weakness.get(
@@ -201,98 +453,149 @@ class PriorityAnalyzer:
                 )
             )
 
-            # Don't fill the player's
-            # top priorities with weak
-            # one-off evidence unless
-            # we don't have anything else.
-            if (
-                confidence == "LOW"
-                and
-                len(priorities) >= 3
-            ):
-                continue
-
-            priorities.append({
-                "rank":
-                    0,
-
-                "weakness_key":
-                    weakness[
+            candidate = {
+                "key":
+                    weakness.get(
                         "key"
-                    ],
+                    ),
 
                 "title":
                     task[
                         "title"
                     ],
 
-                "score":
-                    weakness[
-                        "score"
+                "category":
+                    task[
+                        "category"
                     ],
+
+                "action":
+                    task[
+                        "action"
+                    ],
+
+                "priority_score":
+                    self._priority_score(
+                        weakness
+                    ),
+
+                "weakness_score":
+                    weakness.get(
+                        "weakness_score"
+                    ),
 
                 "confidence":
                     confidence,
 
-                "evidence": {
-                    "occurrences":
-                        weakness[
-                            "occurrences"
-                        ],
+                "occurrences":
+                    weakness.get(
+                        "occurrences",
+                        0,
+                    ),
 
-                    "matches_affected":
-                        weakness[
-                            "matches_affected"
-                        ],
+                "matches":
+                    weakness.get(
+                        "match_count",
+                        weakness.get(
+                            "matches_analyzed",
+                            0,
+                        ),
+                    ),
 
-                    "matches_analyzed":
-                        weakness[
-                            "matches_analyzed"
-                        ],
+                "high_impact_occurrences":
+                    weakness.get(
+                        "high_impact_occurrences",
+                        0,
+                    ),
 
-                    "average_severity":
-                        weakness[
-                            "average_severity"
-                        ],
+                "examples":
+                    weakness.get(
+                        "examples",
+                        [],
+                    ),
+            }
 
-                    "high_impact_occurrences":
-                        weakness[
-                            "high_impact_occurrences"
-                        ],
+            candidates.append(
+                candidate
+            )
 
-                    "average_minute":
-                        weakness[
-                            "average_minute"
-                        ],
-                },
+        # ------------------------------------------
+        # Highest-value problems first.
+        # ------------------------------------------
 
-                "next_game_task":
-                    task[
-                        "next_game_task"
-                    ],
-            })
+        candidates.sort(
+            key=lambda item:
+                item[
+                    "priority_score"
+                ],
+            reverse=True,
+        )
+
+        # ==========================================
+        # CONFIDENCE-AWARE SELECTION
+        #
+        # Prefer HIGH/MEDIUM evidence.
+        # Allow LOW evidence only when we still
+        # need priorities.
+        # ==========================================
+
+        strong = [
+            item
+            for item in candidates
+            if (
+                item[
+                    "confidence"
+                ]
+                in {
+                    "HIGH",
+                    "MEDIUM",
+                }
+            )
+        ]
+
+        low = [
+            item
+            for item in candidates
+            if (
+                item[
+                    "confidence"
+                ]
+                not in {
+                    "HIGH",
+                    "MEDIUM",
+                }
+            )
+        ]
+
+        selected = []
+
+        # Prefer at least the strongest supported
+        # priorities first.
+
+        for item in strong:
 
             if (
-                len(priorities)
+                len(selected)
                 >= max_priorities
             ):
                 break
 
-        for index, priority in enumerate(
-            priorities,
-            start=1,
-        ):
+            selected.append(
+                item
+            )
 
-            priority[
-                "rank"
-            ] = index
+        # Fill remaining slots if necessary.
 
-        return {
-            "priority_count":
-                len(
-                    priorities
-                ),
+        for item in low:
 
-            "priorities":
-                priorities,
-        }
+            if (
+                len(selected)
+                >= max_priorities
+            ):
+                break
+
+            selected.append(
+                item
+            )
+
+        return selected

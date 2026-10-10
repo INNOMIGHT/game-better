@@ -66,19 +66,17 @@ class CriticalMomentAnalyzer:
         if frame is None:
             return None
 
-        position = (
-            frame.position
-            or {}
+        x = getattr(
+            frame,
+            "position_x",
+            None,
         )
 
-        if not isinstance(
-            position,
-            dict,
-        ):
-            return None
-
-        x = position.get("x")
-        y = position.get("y")
+        y = getattr(
+            frame,
+            "position_y",
+            None,
+        )
 
         if (
             x is None
